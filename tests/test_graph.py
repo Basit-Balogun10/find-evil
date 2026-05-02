@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any, cast
 from unittest import TestCase
 from unittest.mock import patch
+
+
+ROOT_DIRECTORY = Path(__file__).resolve().parents[1]
+SRC_DIRECTORY = ROOT_DIRECTORY / "src"
+if str(SRC_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SRC_DIRECTORY))
 
 from find_evil.adapters import SiftUnavailableError, UnavailableSiftAdapter
 from find_evil.app import build_initial_state, run_case
@@ -15,6 +23,7 @@ from find_evil.evidence import (
 )
 from find_evil.graph import NODE_SEQUENCE, build_graph, route_after_self_correction
 from find_evil.reasoning import calibrate_confidence_scores, build_evidence_relationship_graph, rank_hypotheses
+from find_evil.reporting import build_accuracy_benchmark_summary, build_dual_audience_reports, build_remediation_playbook, decide_escalation, extract_iocs
 from find_evil import nodes
 
 
@@ -69,17 +78,20 @@ class FindEvilGraphTests(TestCase):
 
     def test_relationship_graph_connects_findings_to_artifacts(self) -> None:
         state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
-        state["raw_triage_findings"] = [
-            {
-                "node": "basic_disk_triage",
-                "layer": 0,
-                "summary": "Prepared triage manifest",
-                "status": "triage_manifest_ready",
-                "confidence": 0.2,
-                "trace_id": "basic_disk_triage:1",
-                "source_artifacts": ["/cases/sample.dd"],
-            }
-        ]
+        state["raw_triage_findings"] = cast(
+            Any,
+            [
+                {
+                    "node": "basic_disk_triage",
+                    "layer": 0,
+                    "summary": "Prepared triage manifest",
+                    "status": "triage_manifest_ready",
+                    "confidence": 0.2,
+                    "trace_id": "basic_disk_triage:1",
+                    "source_artifacts": ["/cases/sample.dd"],
+                }
+            ],
+        )
 
         graph = build_evidence_relationship_graph(state)
 
@@ -89,17 +101,20 @@ class FindEvilGraphTests(TestCase):
 
     def test_confidence_calibration_scores_findings_from_supporting_artifacts(self) -> None:
         state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
-        state["raw_triage_findings"] = [
-            {
-                "node": "basic_disk_triage",
-                "layer": 0,
-                "summary": "Prepared triage manifest",
-                "status": "triage_manifest_ready",
-                "confidence": 0.2,
-                "trace_id": "basic_disk_triage:1",
-                "source_artifacts": ["/cases/sample.dd"],
-            }
-        ]
+        state["raw_triage_findings"] = cast(
+            Any,
+            [
+                {
+                    "node": "basic_disk_triage",
+                    "layer": 0,
+                    "summary": "Prepared triage manifest",
+                    "status": "triage_manifest_ready",
+                    "confidence": 0.2,
+                    "trace_id": "basic_disk_triage:1",
+                    "source_artifacts": ["/cases/sample.dd"],
+                }
+            ],
+        )
 
         scores = calibrate_confidence_scores(state)
 
@@ -113,6 +128,56 @@ class FindEvilGraphTests(TestCase):
         self.assertGreaterEqual(len(hypotheses), 2)
         self.assertEqual(hypotheses[0]["priority"], 1)
         self.assertIn("Correlate disk and memory evidence", hypotheses[0]["name"])
+
+    def test_dual_audience_reports_include_technical_and_executive_views(self) -> None:
+        state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
+        state["hypotheses"] = cast(Any, rank_hypotheses(state))
+        state["confidence_scores"] = calibrate_confidence_scores(state)
+        state["evidence_relationship_graph"] = build_evidence_relationship_graph(state)
+
+        reports = build_dual_audience_reports(state)
+
+        self.assertEqual(len(reports), 2)
+        self.assertEqual(reports[0]["audience"], "technical analyst")
+        self.assertEqual(reports[1]["audience"], "executive brief")
+
+    def test_remediation_playbook_prioritizes_read_only_evidence_handling(self) -> None:
+        steps = build_remediation_playbook(build_initial_state())
+
+        self.assertGreaterEqual(len(steps), 4)
+        self.assertIn("Preserve evidence read-only", steps[0]["action"])
+
+    def test_ioc_extraction_returns_candidate_indicators(self) -> None:
+        state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
+        state["confidence_scores"] = [
+            {
+                "node": "basic_disk_triage",
+                "trace_id": "basic_disk_triage:1",
+                "source_collection": "raw_triage_findings",
+                "confidence": 0.8,
+                "evidence_count": 1,
+                "rationale": ["supported by 1 artifact(s)"],
+            }
+        ]
+
+        iocs = extract_iocs(state)
+
+        self.assertGreaterEqual(len(iocs), 1)
+        self.assertEqual(iocs[0]["ioc_type"], "artifact_path")
+
+    def test_accuracy_benchmark_summary_stays_pending_without_ground_truth(self) -> None:
+        summary = build_accuracy_benchmark_summary(build_initial_state(evidence_file_paths=["/cases/sample.dd"]))
+
+        self.assertEqual(summary["status"], "pending_ground_truth")
+        self.assertFalse(summary["ground_truth_loaded"])
+
+    def test_escalation_decision_remains_conservative_for_scaffold_output(self) -> None:
+        state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
+        state["confidence_scores"] = calibrate_confidence_scores(state)
+
+        decision = decide_escalation(state)
+
+        self.assertFalse(decision["should_escalate"])
 
     def test_unavailable_adapter_inspects_manifest_without_writing(self) -> None:
         adapter = UnavailableSiftAdapter()
@@ -145,6 +210,11 @@ class FindEvilGraphTests(TestCase):
             self.assertGreaterEqual(final_state["evidence_relationship_graph"]["edge_count"], 1)
             self.assertGreaterEqual(len(final_state["confidence_scores"]), 1)
             self.assertGreaterEqual(len(final_state["hypotheses"]), 1)
+            self.assertEqual(len(final_state["final_reports"]), 2)
+            self.assertGreaterEqual(len(final_state["remediation_steps"],), 4)
+            self.assertGreaterEqual(len(final_state["iocs"]), 1)
+            self.assertEqual(final_state["benchmark_results"]["status"], "pending_ground_truth")
+            self.assertFalse(final_state["escalation_decision"]["should_escalate"])
             self.assertTrue(audit_log_path.exists())
             self.assertEqual(len(audit_log_path.read_text(encoding="utf-8").splitlines()), len(NODE_SEQUENCE))
 

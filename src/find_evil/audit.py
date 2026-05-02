@@ -29,14 +29,12 @@ class AuditLogger:
             "timestamp": _utc_timestamp(),
             "node": node,
             "event": event,
+            "details": details or {},
         }
 
         if state is not None:
             entry["iteration_count"] = int(state.get("iteration_count", 0))
             entry["max_iterations"] = int(state.get("max_iterations", 0))
-
-        if details is not None:
-            entry["details"] = details
 
         with self._lock:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)

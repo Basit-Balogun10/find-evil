@@ -6,17 +6,17 @@ This repository is intentionally small right now: the SIFT Workstation is not in
 
 ## What Is Here
 
-- `find_evil/state.py` defines the shared `AgentState`.
-- `find_evil/audit.py` writes structured audit entries to `logs/audit.jsonl`.
-- `find_evil/nodes.py` contains stub implementations for all 22 analysis stages.
-- `find_evil/adapters.py` defines the read-only adapter boundary for future SIFT integration.
-- `find_evil/graph.py` wires the nodes together in LangGraph.
-- `find_evil/app.py` builds the initial state and runs the graph.
+- `src/find_evil/state.py` defines the shared `AgentState`.
+- `src/find_evil/audit.py` writes structured audit entries to `logs/audit.jsonl`.
+- `src/find_evil/nodes.py` contains stub implementations for all 22 analysis stages.
+- `src/find_evil/adapters.py` defines the read-only adapter boundary for future SIFT integration.
+- `src/find_evil/graph.py` wires the nodes together in LangGraph.
+- `src/find_evil/app.py` builds the initial state and runs the graph.
 - `main.py` is the CLI entrypoint.
 
 ## Why `find_evil`
 
-The repository stays named `find-evil` because that is the project name on disk and on GitHub. The Python package is `find_evil` because hyphens are not valid in Python import names, so the importable module uses underscores while the repo keeps the human-readable hyphenated name.
+The repository stays named `find-evil` because that is the project name on disk and on GitHub. The Python package now lives under `src/find_evil` because hyphens are not valid in Python import names and the `src` layout keeps importable code separate from root-level scripts and docs.
 
 ## Run
 

@@ -7,6 +7,13 @@ from .adapters import build_default_adapter
 from .audit import AUDIT_LOGGER
 from .evidence import build_disk_triage_summary, build_evidence_integrity_report
 from .reasoning import build_evidence_relationship_graph, calibrate_confidence_scores, rank_hypotheses
+from .reporting import (
+    build_accuracy_benchmark_summary,
+    build_dual_audience_reports,
+    build_remediation_playbook,
+    decide_escalation,
+    extract_iocs,
+)
 from .state import AgentState
 
 
@@ -231,6 +238,26 @@ def create_stub_node(node_name: str) -> NodeFunction:
 
         if node_name == "hypothesis_driven_investigation":
             output[spec["state_key"]] = rank_hypotheses(state)
+            return output
+
+        if node_name == "escalation_decision":
+            output[spec["state_key"]] = decide_escalation(state)
+            return output
+
+        if node_name == "ioc_extraction":
+            output[spec["state_key"]] = extract_iocs(state)
+            return output
+
+        if node_name == "accuracy_benchmarking":
+            output[spec["state_key"]] = build_accuracy_benchmark_summary(state)
+            return output
+
+        if node_name == "dual_audience_reporting":
+            output[spec["state_key"]] = build_dual_audience_reports(state)
+            return output
+
+        if node_name == "remediation_playbook":
+            output[spec["state_key"]] = build_remediation_playbook(state)
             return output
 
         if node_name == "self_correction_loop":

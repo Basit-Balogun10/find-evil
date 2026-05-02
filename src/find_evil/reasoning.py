@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from collections.abc import Mapping
 from typing import Any
 
 from .evidence import build_disk_triage_summary, classify_evidence_path
@@ -15,14 +16,14 @@ FINDING_COLLECTION_KEYS = [
 ]
 
 
-def _iter_findings(state: dict[str, Any]) -> Iterable[tuple[str, dict[str, Any]]]:
+def _iter_findings(state: Mapping[str, Any]) -> Iterable[tuple[str, dict[str, Any]]]:
     for collection_key in FINDING_COLLECTION_KEYS:
         for finding in state.get(collection_key, []):
             if isinstance(finding, dict):
                 yield collection_key, finding
 
 
-def build_evidence_relationship_graph(state: dict[str, Any]) -> dict[str, Any]:
+def build_evidence_relationship_graph(state: Mapping[str, Any]) -> dict[str, Any]:
     evidence_paths = list(state.get("evidence_file_paths", []))
     artifact_nodes: dict[str, dict[str, Any]] = {}
     finding_nodes: list[dict[str, Any]] = []
@@ -84,7 +85,7 @@ def build_evidence_relationship_graph(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def calibrate_confidence_scores(state: dict[str, Any]) -> list[dict[str, Any]]:
+def calibrate_confidence_scores(state: Mapping[str, Any]) -> list[dict[str, Any]]:
     confidence_scores: list[dict[str, Any]] = []
 
     for collection_key, finding in _iter_findings(state):
@@ -116,7 +117,7 @@ def calibrate_confidence_scores(state: dict[str, Any]) -> list[dict[str, Any]]:
     return confidence_scores
 
 
-def rank_hypotheses(state: dict[str, Any]) -> list[dict[str, Any]]:
+def rank_hypotheses(state: Mapping[str, Any]) -> list[dict[str, Any]]:
     triage_summary = build_disk_triage_summary(state.get("evidence_file_paths", []))
     disk_image_count = triage_summary["disk_image_count"]
     memory_capture_count = triage_summary["memory_capture_count"]

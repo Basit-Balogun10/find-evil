@@ -1,5 +1,5 @@
 {
-  "include": ["main.py", "find_evil"],
-  "extraPaths": ["."],
+  "include": ["main.py", "src", "tests"],
+  "extraPaths": ["src"],
   "typeCheckingMode": "basic"
 }
