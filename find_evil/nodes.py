@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .audit import AUDIT_LOGGER
+from .evidence import build_disk_triage_summary, build_evidence_integrity_report
 from .state import AgentState
 
 
@@ -21,13 +22,13 @@ NODE_DEFINITIONS: dict[str, dict[str, Any]] = {
         "layer": 0,
         "state_key": "evidence_integrity_report",
         "mode": "replace",
-        "summary": "Record the read-only evidence boundary as an architectural guarantee.",
+        "summary": "Inspect evidence paths and confirm the read-only boundary.",
     },
     "basic_disk_triage": {
         "layer": 0,
         "state_key": "raw_triage_findings",
         "mode": "append",
-        "summary": "Run the initial disk triage pass and capture placeholder findings.",
+        "summary": "Convert the evidence manifest into a triage-ready placeholder finding.",
     },
     "memory_analysis": {
         "layer": 1,
@@ -187,6 +188,29 @@ def create_stub_node(node_name: str) -> NodeFunction:
 
         record = _base_record(node_name, state, spec)
         output: dict[str, Any] = {"audit_log": [audit_entry]}
+
+        if node_name == "evidence_integrity":
+            evidence_report = build_evidence_integrity_report(state.get("evidence_file_paths", []))
+            output[spec["state_key"]] = {
+                **evidence_report,
+                "node": node_name,
+                "layer": spec["layer"],
+                "status": "read_only_boundary_confirmed",
+                "summary": spec["summary"],
+                "trace_id": record["trace_id"],
+            }
+            return output
+
+        if node_name == "basic_disk_triage":
+            triage_summary = build_disk_triage_summary(state.get("evidence_file_paths", []))
+            disk_image_count = triage_summary["disk_image_count"]
+            record["status"] = (
+                "triage_manifest_ready" if disk_image_count > 0 else "triage_pending_no_disk_image"
+            )
+            record["confidence"] = 0.2 if disk_image_count > 0 else 0.05
+            record["details"] = triage_summary
+            output[spec["state_key"]] = [record]
+            return output
 
         if node_name == "self_correction_loop":
             iteration_count = int(state.get("iteration_count", 0))
