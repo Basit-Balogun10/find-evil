@@ -14,6 +14,7 @@ if str(SRC_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SRC_DIRECTORY))
 
 from find_evil.adapters import SiftUnavailableError, UnavailableSiftAdapter
+from find_evil.contracts import ContractViolationError, build_initial_state_payload, validate_initial_state, validate_node_output
 from find_evil.app import build_initial_state, run_case
 from find_evil.audit import AuditLogger
 from find_evil.evidence import (
@@ -53,6 +54,21 @@ class FindEvilGraphTests(TestCase):
         graph = build_graph()
 
         self.assertIsNotNone(graph)
+
+    def test_validate_node_output_rejects_unknown_keys(self) -> None:
+        with self.assertRaises(ContractViolationError):
+            validate_node_output("test_node", {"unknown_key": []})
+
+    def test_validate_initial_state_rejects_missing_keys(self) -> None:
+        with self.assertRaises(ContractViolationError):
+            validate_initial_state({"evidence_file_paths": []})
+
+    def test_build_initial_state_payload_produces_complete_shape(self) -> None:
+        payload = build_initial_state_payload(evidence_file_paths=["/cases/disk.dd"])
+
+        validate_initial_state(payload)
+        self.assertEqual(payload["evidence_file_paths"], ["/cases/disk.dd"])
+        self.assertEqual(payload["iteration_count"], 0)
 
     def test_classify_evidence_path_recognizes_common_artifacts(self) -> None:
         self.assertEqual(classify_evidence_path("/cases/sample.dd"), "disk_image")

@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .adapters import build_default_adapter
+from .contracts import validate_node_output
 from .audit import AUDIT_LOGGER
 from .evidence import build_disk_triage_summary, build_evidence_integrity_report
 from .reasoning import build_evidence_relationship_graph, calibrate_confidence_scores, rank_hypotheses
@@ -277,9 +278,12 @@ def create_stub_node(node_name: str) -> NodeFunction:
 
         raise ValueError(f"Unsupported mode for node {node_name!r}: {spec['mode']!r}")
 
-    node.__name__ = node_name
-    node.__qualname__ = node_name
-    return node
+    def wrapped_node(state: AgentState) -> dict[str, Any]:
+        return validate_node_output(node_name, node(state))
+
+    wrapped_node.__name__ = node_name
+    wrapped_node.__qualname__ = node_name
+    return wrapped_node
 
 
 audit_trail = create_stub_node("audit_trail")
