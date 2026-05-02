@@ -13,6 +13,7 @@ This repository is intentionally small right now: the SIFT Workstation is not in
 - `src/find_evil/graph.py` wires the nodes together in LangGraph.
 - `src/find_evil/app.py` builds the initial state and runs the graph.
 - `main.py` is the CLI entrypoint.
+- `docs/architecture.md` contains Mermaid and ASCII diagrams of the control flow and trust boundaries.
 
 ## Why `find_evil`
 
@@ -33,3 +34,7 @@ Optional flags:
 ## Safety Boundary
 
 The current scaffold does not touch evidence files. That constraint will be enforced architecturally when SIFT tool calls are added.
+
+## Architecture
+
+See [docs/architecture.md](docs/architecture.md) for the Mermaid diagram, ASCII diagram, and arrow-by-arrow walkthrough.

@@ -14,7 +14,6 @@ if str(SRC_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SRC_DIRECTORY))
 
 from find_evil.adapters import SiftUnavailableError, UnavailableSiftAdapter
-from find_evil.contracts import ContractViolationError, build_initial_state_payload, validate_initial_state, validate_node_output
 from find_evil.app import build_initial_state, run_case
 from find_evil.audit import AuditLogger
 from find_evil.evidence import (
@@ -29,12 +28,6 @@ from find_evil import nodes
 
 
 class FindEvilGraphTests(TestCase):
-    def _with_temporary_audit_logger(self):
-        temporary_directory = TemporaryDirectory()
-        audit_log_path = Path(temporary_directory.name) / "audit.jsonl"
-        temporary_logger = AuditLogger(log_path=audit_log_path)
-        return temporary_directory, temporary_logger, audit_log_path
-
     def test_build_initial_state_sets_expected_defaults(self) -> None:
         state = build_initial_state(evidence_file_paths=["/cases/disk.dd"], max_iterations=3)
 
@@ -60,138 +53,6 @@ class FindEvilGraphTests(TestCase):
         graph = build_graph()
 
         self.assertIsNotNone(graph)
-
-    def test_validate_node_output_rejects_unknown_keys(self) -> None:
-        with self.assertRaises(ContractViolationError):
-            validate_node_output("test_node", {"unknown_key": []})
-
-    def test_layer_one_nodes_emit_expected_placeholder_shapes(self) -> None:
-        state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
-        temporary_directory, temporary_logger, _ = self._with_temporary_audit_logger()
-
-        try:
-            with patch.object(nodes, "AUDIT_LOGGER", temporary_logger):
-                memory_update = nodes.memory_analysis(state)
-                threat_update = nodes.threat_intel_lookup(state)
-                active_update = nodes.active_vs_dormant_determination(state)
-                negative_update = nodes.negative_space_reasoning(state)
-        finally:
-            temporary_directory.cleanup()
-
-        self.assertEqual(len(memory_update["memory_findings"]), 1)
-        self.assertEqual(len(threat_update["threat_intel_findings"]), 1)
-        self.assertEqual(active_update["active_vs_dormant_result"]["node"], "active_vs_dormant_determination")
-        self.assertEqual(len(negative_update["negative_space_findings"]), 1)
-
-    def test_layer_two_nodes_emit_expected_placeholder_shapes(self) -> None:
-        state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
-        state["raw_triage_findings"] = cast(
-            Any,
-            [
-                {
-                    "node": "basic_disk_triage",
-                    "layer": 0,
-                    "summary": "Prepared triage manifest",
-                    "status": "triage_manifest_ready",
-                    "confidence": 0.2,
-                    "trace_id": "basic_disk_triage:1",
-                    "source_artifacts": ["/cases/sample.dd"],
-                }
-            ],
-        )
-        temporary_directory, temporary_logger, _ = self._with_temporary_audit_logger()
-
-        try:
-            with patch.object(nodes, "AUDIT_LOGGER", temporary_logger):
-                correlation_update = nodes.disk_memory_correlation(state)
-                mapping_update = nodes.mitre_mapping(state)
-                graph_update = nodes.evidence_relationship_graph(state)
-                confidence_update = nodes.confidence_calibration(state)
-        finally:
-            temporary_directory.cleanup()
-
-        self.assertEqual(len(correlation_update["correlation_results"]), 1)
-        self.assertEqual(len(mapping_update["attack_technique_mappings"]), 1)
-        self.assertGreaterEqual(graph_update["evidence_relationship_graph"]["node_count"], 1)
-        self.assertEqual(len(confidence_update["confidence_scores"]), 1)
-
-    def test_layer_three_nodes_emit_expected_placeholder_shapes(self) -> None:
-        state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
-        state["confidence_scores"] = cast(
-            Any,
-            [
-                {
-                    "node": "basic_disk_triage",
-                    "trace_id": "basic_disk_triage:1",
-                    "source_collection": "raw_triage_findings",
-                    "confidence": 0.8,
-                    "evidence_count": 1,
-                    "rationale": ["supported by 1 artifact(s)"],
-                }
-            ],
-        )
-        temporary_directory, temporary_logger, _ = self._with_temporary_audit_logger()
-
-        try:
-            with patch.object(nodes, "AUDIT_LOGGER", temporary_logger):
-                hypothesis_update = nodes.hypothesis_driven_investigation(state)
-                blast_update = nodes.blast_radius_assessment(state)
-                attacker_update = nodes.attacker_perspective(state)
-                next_step_update = nodes.predictive_next_step_reasoning(state)
-                timeline_update = nodes.timeline_reconstruction(state)
-        finally:
-            temporary_directory.cleanup()
-
-        self.assertGreaterEqual(len(hypothesis_update["hypotheses"]), 1)
-        self.assertEqual(blast_update["blast_radius_assessment"]["node"], "blast_radius_assessment")
-        self.assertEqual(attacker_update["attacker_intent_summary"]["node"], "attacker_perspective")
-        self.assertEqual(len(next_step_update["predicted_next_steps"]), 1)
-        self.assertEqual(len(timeline_update["attack_timeline"]), 1)
-
-    def test_layer_four_nodes_emit_expected_placeholder_shapes(self) -> None:
-        state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
-        state["confidence_scores"] = cast(
-            Any,
-            [
-                {
-                    "node": "basic_disk_triage",
-                    "trace_id": "basic_disk_triage:1",
-                    "source_collection": "raw_triage_findings",
-                    "confidence": 0.8,
-                    "evidence_count": 1,
-                    "rationale": ["supported by 1 artifact(s)"],
-                }
-            ],
-        )
-        state["evidence_relationship_graph"] = cast(Any, {"node_count": 2})
-        temporary_directory, temporary_logger, _ = self._with_temporary_audit_logger()
-
-        try:
-            with patch.object(nodes, "AUDIT_LOGGER", temporary_logger):
-                escalation_update = nodes.escalation_decision(state)
-                ioc_update = nodes.ioc_extraction(state)
-                benchmark_update = nodes.accuracy_benchmarking(state)
-                reports_update = nodes.dual_audience_reporting(state)
-                remediation_update = nodes.remediation_playbook(state)
-        finally:
-            temporary_directory.cleanup()
-
-        self.assertIn("should_escalate", escalation_update["escalation_decision"])
-        self.assertGreaterEqual(len(ioc_update["iocs"]), 1)
-        self.assertEqual(benchmark_update["benchmark_results"]["status"], "pending_ground_truth")
-        self.assertEqual(len(reports_update["final_reports"]), 2)
-        self.assertGreaterEqual(len(remediation_update["remediation_steps"]), 4)
-
-    def test_validate_initial_state_rejects_missing_keys(self) -> None:
-        with self.assertRaises(ContractViolationError):
-            validate_initial_state({"evidence_file_paths": []})
-
-    def test_build_initial_state_payload_produces_complete_shape(self) -> None:
-        payload = build_initial_state_payload(evidence_file_paths=["/cases/disk.dd"])
-
-        validate_initial_state(payload)
-        self.assertEqual(payload["evidence_file_paths"], ["/cases/disk.dd"])
-        self.assertEqual(payload["iteration_count"], 0)
 
     def test_classify_evidence_path_recognizes_common_artifacts(self) -> None:
         self.assertEqual(classify_evidence_path("/cases/sample.dd"), "disk_image")

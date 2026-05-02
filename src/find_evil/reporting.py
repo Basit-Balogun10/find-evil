@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
+
+from .contracts import BenchmarkResultRecord, EscalationDecisionRecord, ReportRecord, RemediationStepRecord
 
 
 def _count_findings(state: Mapping[str, Any]) -> int:
@@ -27,7 +29,7 @@ def _average_confidence(state: Mapping[str, Any]) -> float:
     return round(sum(confidence_scores) / len(confidence_scores), 2)
 
 
-def build_dual_audience_reports(state: Mapping[str, Any]) -> list[dict[str, Any]]:
+def build_dual_audience_reports(state: Mapping[str, Any]) -> list[ReportRecord]:
     evidence_count = len(state.get("evidence_file_paths", []))
     finding_count = _count_findings(state)
     hypothesis_count = len(state.get("hypotheses", []))
@@ -35,7 +37,9 @@ def build_dual_audience_reports(state: Mapping[str, Any]) -> list[dict[str, Any]
     graph_node_count = int(graph.get("node_count", 0)) if isinstance(graph, dict) else 0
     average_confidence = _average_confidence(state)
 
-    analyst_report = {
+    analyst_report = cast(
+        ReportRecord,
+        {
         "audience": "technical analyst",
         "title": "Find Evil analysis summary",
         "summary": (
@@ -62,9 +66,12 @@ def build_dual_audience_reports(state: Mapping[str, Any]) -> list[dict[str, Any]
                 "Benchmark against a labeled forensic dataset once ground truth is loaded.",
             ],
         },
-    }
+        },
+    )
 
-    executive_report = {
+    executive_report = cast(
+        ReportRecord,
+        {
         "audience": "executive brief",
         "title": "Find Evil status update",
         "summary": (
@@ -87,41 +94,57 @@ def build_dual_audience_reports(state: Mapping[str, Any]) -> list[dict[str, Any]
                 "Run the benchmark harness against a labeled dataset.",
             ],
         },
-    }
+        },
+    )
 
     return [analyst_report, executive_report]
 
 
-def build_remediation_playbook(state: Mapping[str, Any]) -> list[dict[str, Any]]:
+def build_remediation_playbook(state: Mapping[str, Any]) -> list[RemediationStepRecord]:
     evidence_count = len(state.get("evidence_file_paths", []))
     hypothesis_count = len(state.get("hypotheses", []))
 
-    steps = [
-        {
+    steps = cast(
+        list[RemediationStepRecord],
+        [
+            cast(
+                RemediationStepRecord,
+                {
             "priority": 1,
             "timeframe": "immediate",
             "action": "Preserve evidence read-only and avoid destructive operations.",
             "rationale": "The architecture must keep spoliation impossible by construction.",
-        },
-        {
+                },
+            ),
+            cast(
+                RemediationStepRecord,
+                {
             "priority": 2,
             "timeframe": "same day",
             "action": "Load disk and memory evidence paths into the adapter boundary.",
             "rationale": "The graph needs real inputs before tool-backed analysis can begin.",
-        },
-        {
+                },
+            ),
+            cast(
+                RemediationStepRecord,
+                {
             "priority": 3,
             "timeframe": "same day",
             "action": "Replace placeholder node bodies with SIFT-backed tool calls.",
             "rationale": "The graph is already wired; the remaining work is to attach the analysis hands.",
-        },
-        {
+                },
+            ),
+            cast(
+                RemediationStepRecord,
+                {
             "priority": 4,
             "timeframe": "next run",
             "action": "Benchmark the final pipeline against a labeled forensic dataset.",
             "rationale": "The hackathon scoring rewards accuracy, traceability, and self-correction.",
-        },
-    ]
+                },
+            ),
+        ],
+    )
 
     if evidence_count == 0:
         steps[1]["action"] = "Provide at least one disk image or memory capture path."
@@ -129,12 +152,15 @@ def build_remediation_playbook(state: Mapping[str, Any]) -> list[dict[str, Any]]
 
     if hypothesis_count == 0:
         steps.append(
-            {
+            cast(
+                RemediationStepRecord,
+                {
                 "priority": 5,
                 "timeframe": "next run",
                 "action": "Seed the hypothesis generator with a known-case dataset.",
                 "rationale": "The higher-order reasoning layer needs evidence to rank competing theories.",
-            }
+                },
+            )
         )
 
     return steps
@@ -182,7 +208,7 @@ def extract_iocs(state: Mapping[str, Any]) -> list[dict[str, Any]]:
     return deduplicated_iocs
 
 
-def decide_escalation(state: Mapping[str, Any]) -> dict[str, Any]:
+def decide_escalation(state: Mapping[str, Any]) -> EscalationDecisionRecord:
     evidence_count = len(state.get("evidence_file_paths", []))
     average_confidence = _average_confidence(state)
     high_confidence_findings = [
@@ -190,7 +216,9 @@ def decide_escalation(state: Mapping[str, Any]) -> dict[str, Any]:
     ]
 
     should_escalate = evidence_count > 0 and bool(high_confidence_findings) and average_confidence >= 0.5
-    return {
+    return cast(
+        EscalationDecisionRecord,
+        {
         "should_escalate": should_escalate,
         "reason": (
             "Escalate if the graph produces high-confidence findings and the evidence set is non-empty."
@@ -200,10 +228,11 @@ def decide_escalation(state: Mapping[str, Any]) -> dict[str, Any]:
         "evidence_count": evidence_count,
         "average_confidence": average_confidence,
         "high_confidence_finding_count": len(high_confidence_findings),
-    }
+        },
+    )
 
 
-def build_accuracy_benchmark_summary(state: Mapping[str, Any]) -> dict[str, Any]:
+def build_accuracy_benchmark_summary(state: Mapping[str, Any]) -> BenchmarkResultRecord:
     finding_count = _count_findings(state)
     placeholder_finding_count = sum(
         1
@@ -218,7 +247,9 @@ def build_accuracy_benchmark_summary(state: Mapping[str, Any]) -> dict[str, Any]
         if isinstance(finding, dict) and finding.get("status") == "placeholder"
     )
 
-    return {
+    return cast(
+        BenchmarkResultRecord,
+        {
         "status": "pending_ground_truth",
         "ground_truth_loaded": False,
         "finding_count": finding_count,
@@ -227,4 +258,5 @@ def build_accuracy_benchmark_summary(state: Mapping[str, Any]) -> dict[str, Any]
         "missed_artifacts": 0,
         "hallucinated_claims": 0,
         "note": "Ground truth datasets are not wired in yet, so this report is a scaffold-level placeholder.",
-    }
+        },
+    )

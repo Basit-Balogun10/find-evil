@@ -7,6 +7,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Mapping
 
+from .contracts import AuditLogEntry
+
 
 def _utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -24,8 +26,8 @@ class AuditLogger:
         event: str,
         state: Mapping[str, Any] | None = None,
         details: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        entry: dict[str, Any] = {
+    ) -> AuditLogEntry:
+        entry: AuditLogEntry = {
             "timestamp": _utc_timestamp(),
             "node": node,
             "event": event,

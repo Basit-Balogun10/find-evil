@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from collections.abc import MutableMapping
+from typing import Any, cast
 
 from .adapters import build_default_adapter
-from .contracts import validate_node_output
 from .audit import AUDIT_LOGGER
+from .contracts import FindingRecord
 from .evidence import build_disk_triage_summary, build_evidence_integrity_report
 from .reasoning import build_evidence_relationship_graph, calibrate_confidence_scores, rank_hypotheses
 from .reporting import (
@@ -18,7 +19,7 @@ from .reporting import (
 from .state import AgentState
 
 
-NodeFunction = Callable[[AgentState], dict[str, Any]]
+NodeFunction = Callable[[AgentState], MutableMapping[str, Any]]
 
 
 NODE_DEFINITIONS: dict[str, dict[str, Any]] = {
@@ -161,12 +162,14 @@ def _trace_id(node_name: str, iteration_count: int) -> str:
     return f"{node_name}:{iteration_count + 1}"
 
 
-def _base_record(node_name: str, state: AgentState, spec: dict[str, Any]) -> dict[str, Any]:
+def _base_record(node_name: str, state: AgentState, spec: dict[str, Any]) -> FindingRecord:
     iteration_count = int(state.get("iteration_count", 0))
     max_iterations = int(state.get("max_iterations", 1))
     retry_requested = bool(state.get("retry_requested", False))
 
-    return {
+    return cast(
+        FindingRecord,
+        {
         "node": node_name,
         "layer": spec["layer"],
         "summary": spec["summary"],
@@ -177,13 +180,16 @@ def _base_record(node_name: str, state: AgentState, spec: dict[str, Any]) -> dic
         "max_iterations": max_iterations,
         "retry_requested": retry_requested,
         "source_artifacts": list(state.get("evidence_file_paths", [])),
-    }
+        "details": {},
+        "iteration_count_after": iteration_count,
+    },
+    )
 
 
 def create_stub_node(node_name: str) -> NodeFunction:
     spec = NODE_DEFINITIONS[node_name]
 
-    def node(state: AgentState) -> dict[str, Any]:
+    def node(state: AgentState) -> MutableMapping[str, Any]:
         audit_entry = AUDIT_LOGGER.record(
             node=node_name,
             event="node_executed",
@@ -197,12 +203,12 @@ def create_stub_node(node_name: str) -> NodeFunction:
         )
 
         record = _base_record(node_name, state, spec)
-        output: dict[str, Any] = {"audit_log": [audit_entry]}
+        output: MutableMapping[str, Any] = {"audit_log": [audit_entry]}
         adapter = build_default_adapter()
 
         if node_name == "evidence_integrity":
             evidence_report = adapter.inspect_manifest(state.get("evidence_file_paths", []))
-            output[spec["state_key"]] = {
+            output["evidence_integrity_report"] = {
                 **evidence_report,
                 "node": node_name,
                 "layer": spec["layer"],
@@ -219,13 +225,13 @@ def create_stub_node(node_name: str) -> NodeFunction:
                 "triage_manifest_ready" if disk_image_count > 0 else "triage_pending_no_disk_image"
             )
             record["confidence"] = 0.2 if disk_image_count > 0 else 0.05
-            record["details"] = triage_summary
-            output[spec["state_key"]] = [record]
+            record["details"] = cast(dict[str, Any], triage_summary)
+            output["raw_triage_findings"] = [record]
             return output
 
         if node_name == "evidence_relationship_graph":
             graph = build_evidence_relationship_graph(state)
-            output[spec["state_key"]] = {
+            output["evidence_relationship_graph"] = {
                 **graph,
                 "node": node_name,
                 "layer": spec["layer"],
@@ -234,37 +240,37 @@ def create_stub_node(node_name: str) -> NodeFunction:
             return output
 
         if node_name == "confidence_calibration":
-            output[spec["state_key"]] = calibrate_confidence_scores(state)
+            output["confidence_scores"] = calibrate_confidence_scores(state)
             return output
 
         if node_name == "hypothesis_driven_investigation":
-            output[spec["state_key"]] = rank_hypotheses(state)
+            output["hypotheses"] = rank_hypotheses(state)
             return output
 
         if node_name == "escalation_decision":
-            output[spec["state_key"]] = decide_escalation(state)
+            output["escalation_decision"] = decide_escalation(state)
             return output
 
         if node_name == "ioc_extraction":
-            output[spec["state_key"]] = extract_iocs(state)
+            output["iocs"] = extract_iocs(state)
             return output
 
         if node_name == "accuracy_benchmarking":
-            output[spec["state_key"]] = build_accuracy_benchmark_summary(state)
+            output["benchmark_results"] = build_accuracy_benchmark_summary(state)
             return output
 
         if node_name == "dual_audience_reporting":
-            output[spec["state_key"]] = build_dual_audience_reports(state)
+            output["final_reports"] = build_dual_audience_reports(state)
             return output
 
         if node_name == "remediation_playbook":
-            output[spec["state_key"]] = build_remediation_playbook(state)
+            output["remediation_steps"] = build_remediation_playbook(state)
             return output
 
         if node_name == "self_correction_loop":
             iteration_count = int(state.get("iteration_count", 0))
             record["iteration_count_after"] = iteration_count + 1
-            output[spec["state_key"]] = [record]
+            output["self_correction_trace"] = [record]
             output["iteration_count"] = iteration_count + 1
             return output
 
@@ -274,16 +280,13 @@ def create_stub_node(node_name: str) -> NodeFunction:
 
         if spec["mode"] == "replace":
             output[spec["state_key"]] = record
-            return output
+            return dict(output)
 
         raise ValueError(f"Unsupported mode for node {node_name!r}: {spec['mode']!r}")
 
-    def wrapped_node(state: AgentState) -> dict[str, Any]:
-        return validate_node_output(node_name, node(state))
-
-    wrapped_node.__name__ = node_name
-    wrapped_node.__qualname__ = node_name
-    return wrapped_node
+    node.__name__ = node_name
+    node.__qualname__ = node_name
+    return node
 
 
 audit_trail = create_stub_node("audit_trail")

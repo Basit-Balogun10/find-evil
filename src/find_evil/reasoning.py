@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from .evidence import build_disk_triage_summary, classify_evidence_path
+from .contracts import ConfidenceRecord, FindingRecord, HypothesisRecord, RelationshipGraphRecord
 
 
 FINDING_COLLECTION_KEYS = [
@@ -16,14 +17,14 @@ FINDING_COLLECTION_KEYS = [
 ]
 
 
-def _iter_findings(state: Mapping[str, Any]) -> Iterable[tuple[str, dict[str, Any]]]:
+def _iter_findings(state: Mapping[str, Any]) -> Iterable[tuple[str, FindingRecord]]:
     for collection_key in FINDING_COLLECTION_KEYS:
         for finding in state.get(collection_key, []):
             if isinstance(finding, dict):
-                yield collection_key, finding
+                yield collection_key, cast(FindingRecord, finding)
 
 
-def build_evidence_relationship_graph(state: Mapping[str, Any]) -> dict[str, Any]:
+def build_evidence_relationship_graph(state: Mapping[str, Any]) -> RelationshipGraphRecord:
     evidence_paths = list(state.get("evidence_file_paths", []))
     artifact_nodes: dict[str, dict[str, Any]] = {}
     finding_nodes: list[dict[str, Any]] = []
@@ -85,8 +86,8 @@ def build_evidence_relationship_graph(state: Mapping[str, Any]) -> dict[str, Any
     }
 
 
-def calibrate_confidence_scores(state: Mapping[str, Any]) -> list[dict[str, Any]]:
-    confidence_scores: list[dict[str, Any]] = []
+def calibrate_confidence_scores(state: Mapping[str, Any]) -> list[ConfidenceRecord]:
+    confidence_scores: list[ConfidenceRecord] = []
 
     for collection_key, finding in _iter_findings(state):
         evidence_count = len(list(finding.get("source_artifacts", [])))
@@ -96,10 +97,12 @@ def calibrate_confidence_scores(state: Mapping[str, Any]) -> list[dict[str, Any]
         if finding.get("status") != "placeholder":
             base_confidence += 0.10
 
-        confidence_scores.append(
+        trace_id = str(finding["trace_id"])
+        confidence_record: ConfidenceRecord = cast(
+            ConfidenceRecord,
             {
-                "node": finding.get("node", collection_key),
-                "trace_id": finding.get("trace_id"),
+                "node": str(finding.get("node", collection_key)),
+                "trace_id": trace_id,
                 "source_collection": collection_key,
                 "confidence": round(min(base_confidence, 0.95), 2),
                 "evidence_count": evidence_count,
@@ -111,69 +114,85 @@ def calibrate_confidence_scores(state: Mapping[str, Any]) -> list[dict[str, Any]
                     ),
                     f"status={finding.get('status', 'unknown')}",
                 ],
-            }
+            },
         )
+        confidence_scores.append(confidence_record)
 
     return confidence_scores
 
 
-def rank_hypotheses(state: Mapping[str, Any]) -> list[dict[str, Any]]:
+def rank_hypotheses(state: Mapping[str, Any]) -> list[HypothesisRecord]:
     triage_summary = build_disk_triage_summary(state.get("evidence_file_paths", []))
     disk_image_count = triage_summary["disk_image_count"]
     memory_capture_count = triage_summary["memory_capture_count"]
 
     if disk_image_count == 0 and memory_capture_count == 0:
         return [
-            {
+            cast(
+                HypothesisRecord,
+                {
                 "name": "Await evidence inputs",
                 "priority": 1,
                 "status": "pending",
                 "rationale": "No disk image or memory capture has been supplied yet.",
                 "next_test": "Provide a disk image or memory capture path so the analysis can begin.",
-            }
+                },
+            )
         ]
 
-    hypotheses: list[dict[str, Any]] = []
+    hypotheses: list[HypothesisRecord] = []
 
     if disk_image_count > 0 and memory_capture_count > 0:
         hypotheses.append(
-            {
+            cast(
+                HypothesisRecord,
+                {
                 "name": "Correlate disk and memory evidence",
                 "priority": 1,
                 "status": "pending",
                 "rationale": "Both disk and memory evidence are available, so cross-correlation is the highest-value next step.",
                 "next_test": "Compare the triage manifest to memory-derived process and connection artifacts.",
-            }
+                },
+            )
         )
 
         hypotheses.append(
-            {
+            cast(
+                HypothesisRecord,
+                {
                 "name": "Determine whether the adversary is still active",
                 "priority": 2,
                 "status": "pending",
                 "rationale": "Memory evidence can reveal live processes, sockets, and credentials that disk alone cannot.",
                 "next_test": "Check memory-derived artifacts for live connections and active execution traces.",
-            }
+                },
+            )
         )
     elif disk_image_count > 0:
         hypotheses.append(
-            {
+            cast(
+                HypothesisRecord,
+                {
                 "name": "Disk-image triage first",
                 "priority": 1,
                 "status": "pending",
                 "rationale": "Only a disk image is present, so static triage should establish the initial evidence picture.",
                 "next_test": "Extract the disk manifest and identify artifacts that deserve deeper inspection later.",
-            }
+                },
+            )
         )
     else:
         hypotheses.append(
-            {
+            cast(
+                HypothesisRecord,
+                {
                 "name": "Memory-capture triage first",
                 "priority": 1,
                 "status": "pending",
                 "rationale": "Only a memory capture is present, so live-state inspection should anchor the investigation.",
                 "next_test": "Inspect the memory manifest for live processes, open connections, and credential material.",
-            }
+                },
+            )
         )
 
     return hypotheses

@@ -66,5 +66,5 @@ This roadmap captures the implementation order we should follow before SIFT arri
 1. Expand the README with setup and try-it-out steps.
 2. Add dataset documentation.
 3. Add accuracy-report templates.
-4. Produce architecture diagrams and execution-log examples.
+4. Produce architecture diagrams and execution-log examples in `docs/architecture.md`.
 5. Review the whole repo for competition completeness.

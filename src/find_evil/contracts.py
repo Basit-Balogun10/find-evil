@@ -1,134 +1,114 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, NotRequired, TypedDict
+
+from .evidence import EvidenceIntegrityReport
 
 
-class ContractViolationError(ValueError):
-    """Raised when state or node output violates the graph contract."""
+class AuditLogEntry(TypedDict, total=False):
+    timestamp: str
+    node: str
+    event: str
+    iteration_count: int
+    max_iterations: int
+    details: dict[str, Any]
 
 
-STATE_SEQUENCE_KEYS = (
-    "evidence_file_paths",
-    "raw_triage_findings",
-    "memory_findings",
-    "threat_intel_findings",
-    "negative_space_findings",
-    "correlation_results",
-    "attack_technique_mappings",
-    "confidence_scores",
-    "hypotheses",
-    "predicted_next_steps",
-    "attack_timeline",
-    "iocs",
-    "final_reports",
-    "remediation_steps",
-    "self_correction_trace",
-    "audit_log",
-)
-
-STATE_MAPPING_KEYS = (
-    "audit_trail_snapshot",
-    "evidence_integrity_report",
-    "active_vs_dormant_result",
-    "evidence_relationship_graph",
-    "blast_radius_assessment",
-    "attacker_intent_summary",
-    "escalation_decision",
-    "benchmark_results",
-)
-
-STATE_SCALAR_KEYS = (
-    "iteration_count",
-    "max_iterations",
-    "retry_requested",
-)
-
-STATE_KEYS = STATE_SEQUENCE_KEYS + STATE_MAPPING_KEYS + STATE_SCALAR_KEYS
-
-NODE_UPDATE_KEYS = STATE_KEYS
-
-SEQUENCE_VALUE_KEYS = {
-    "raw_triage_findings",
-    "memory_findings",
-    "threat_intel_findings",
-    "negative_space_findings",
-    "correlation_results",
-    "attack_technique_mappings",
-    "confidence_scores",
-    "hypotheses",
-    "predicted_next_steps",
-    "attack_timeline",
-    "iocs",
-    "final_reports",
-    "remediation_steps",
-    "self_correction_trace",
-    "audit_log",
-}
+class FindingRecord(TypedDict):
+    node: str
+    layer: int
+    summary: str
+    status: str
+    confidence: float
+    trace_id: str
+    iteration_count: int
+    iteration_count_after: NotRequired[int]
+    max_iterations: int
+    retry_requested: bool
+    source_artifacts: list[str]
+    details: dict[str, Any]
 
 
-def build_initial_state_payload(
-    *,
-    evidence_file_paths: Sequence[str] | None = None,
-    max_iterations: int = 1,
-    retry_requested: bool = False,
-) -> dict[str, Any]:
-    state: dict[str, Any] = {
-        "evidence_file_paths": list(evidence_file_paths or []),
-        "iteration_count": 0,
-        "max_iterations": max(1, int(max_iterations)),
-        "retry_requested": retry_requested,
-    }
-
-    for key in STATE_SEQUENCE_KEYS:
-        if key in STATE_SEQUENCE_KEYS and key not in state:
-            state[key] = []
-
-    for key in STATE_MAPPING_KEYS:
-        state[key] = {}
-
-    return state
+class HypothesisRecord(TypedDict):
+    name: str
+    priority: int
+    status: str
+    rationale: str
+    next_test: str
 
 
-def validate_initial_state(state: Mapping[str, Any]) -> None:
-    missing_keys = [key for key in STATE_KEYS if key not in state]
-    if missing_keys:
-        raise ContractViolationError(f"Initial state is missing required keys: {missing_keys}")
-
-    for key in STATE_SEQUENCE_KEYS:
-        if not isinstance(state.get(key), list):
-            raise ContractViolationError(f"Initial state key {key!r} must be a list.")
-
-    for key in STATE_MAPPING_KEYS:
-        if not isinstance(state.get(key), dict):
-            raise ContractViolationError(f"Initial state key {key!r} must be a mapping.")
-
-    if not isinstance(state.get("iteration_count"), int):
-        raise ContractViolationError("Initial state key 'iteration_count' must be an int.")
-    if not isinstance(state.get("max_iterations"), int):
-        raise ContractViolationError("Initial state key 'max_iterations' must be an int.")
-    if not isinstance(state.get("retry_requested"), bool):
-        raise ContractViolationError("Initial state key 'retry_requested' must be a bool.")
+class ReportRecord(TypedDict):
+    audience: str
+    title: str
+    summary: str
+    sections: dict[str, Any]
 
 
-def validate_node_output(node_name: str, output: Mapping[str, Any]) -> dict[str, Any]:
-    unknown_keys = sorted(set(output) - set(NODE_UPDATE_KEYS))
-    if unknown_keys:
-        raise ContractViolationError(
-            f"Node {node_name!r} returned unknown state key(s): {unknown_keys}"
-        )
+class RelationshipGraphRecord(TypedDict):
+    node_count: int
+    edge_count: int
+    nodes: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
+    summary: str
 
-    if "iteration_count" in output and not isinstance(output["iteration_count"], int):
-        raise ContractViolationError(f"Node {node_name!r} must return an int iteration_count.")
 
-    if "retry_requested" in output and not isinstance(output["retry_requested"], bool):
-        raise ContractViolationError(f"Node {node_name!r} must return a bool retry_requested flag.")
+class ConfidenceRecord(TypedDict):
+    node: str
+    trace_id: str
+    source_collection: str
+    confidence: float
+    evidence_count: int
+    rationale: list[str]
 
-    for key in output:
-        if key in SEQUENCE_VALUE_KEYS and not isinstance(output[key], list):
-            raise ContractViolationError(f"Node {node_name!r} must return a list for {key!r}.")
 
-        if key in STATE_MAPPING_KEYS and not isinstance(output[key], dict):
-            raise ContractViolationError(f"Node {node_name!r} must return a mapping for {key!r}.")
+class EscalationDecisionRecord(TypedDict):
+    should_escalate: bool
+    reason: str
+    evidence_count: int
+    average_confidence: float
+    high_confidence_finding_count: int
 
-    return dict(output)
+
+class BenchmarkResultRecord(TypedDict):
+    status: str
+    ground_truth_loaded: bool
+    finding_count: int
+    placeholder_finding_count: int
+    false_positives: int
+    missed_artifacts: int
+    hallucinated_claims: int
+    note: str
+
+
+class RemediationStepRecord(TypedDict):
+    priority: int
+    timeframe: str
+    action: str
+    rationale: str
+
+
+class NodeUpdate(TypedDict, total=False):
+    audit_trail_snapshot: FindingRecord
+    evidence_integrity_report: EvidenceIntegrityReport
+    raw_triage_findings: list[FindingRecord]
+    memory_findings: list[FindingRecord]
+    threat_intel_findings: list[FindingRecord]
+    active_vs_dormant_result: dict[str, Any]
+    negative_space_findings: list[FindingRecord]
+    correlation_results: list[FindingRecord]
+    attack_technique_mappings: list[dict[str, Any]]
+    evidence_relationship_graph: RelationshipGraphRecord
+    confidence_scores: list[ConfidenceRecord]
+    hypotheses: list[HypothesisRecord]
+    blast_radius_assessment: dict[str, Any]
+    attacker_intent_summary: dict[str, Any]
+    predicted_next_steps: list[dict[str, Any]]
+    attack_timeline: list[dict[str, Any]]
+    escalation_decision: EscalationDecisionRecord
+    iocs: list[dict[str, Any]]
+    benchmark_results: BenchmarkResultRecord
+    final_reports: list[ReportRecord]
+    remediation_steps: list[RemediationStepRecord]
+    self_correction_trace: list[FindingRecord]
+    iteration_count: int
+    audit_log: list[AuditLogEntry]
