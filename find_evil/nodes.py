@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from .adapters import build_default_adapter
 from .audit import AUDIT_LOGGER
 from .evidence import build_disk_triage_summary, build_evidence_integrity_report
+from .reasoning import build_evidence_relationship_graph, calibrate_confidence_scores, rank_hypotheses
 from .state import AgentState
 
 
@@ -188,9 +190,10 @@ def create_stub_node(node_name: str) -> NodeFunction:
 
         record = _base_record(node_name, state, spec)
         output: dict[str, Any] = {"audit_log": [audit_entry]}
+        adapter = build_default_adapter()
 
         if node_name == "evidence_integrity":
-            evidence_report = build_evidence_integrity_report(state.get("evidence_file_paths", []))
+            evidence_report = adapter.inspect_manifest(state.get("evidence_file_paths", []))
             output[spec["state_key"]] = {
                 **evidence_report,
                 "node": node_name,
@@ -210,6 +213,24 @@ def create_stub_node(node_name: str) -> NodeFunction:
             record["confidence"] = 0.2 if disk_image_count > 0 else 0.05
             record["details"] = triage_summary
             output[spec["state_key"]] = [record]
+            return output
+
+        if node_name == "evidence_relationship_graph":
+            graph = build_evidence_relationship_graph(state)
+            output[spec["state_key"]] = {
+                **graph,
+                "node": node_name,
+                "layer": spec["layer"],
+                "trace_id": record["trace_id"],
+            }
+            return output
+
+        if node_name == "confidence_calibration":
+            output[spec["state_key"]] = calibrate_confidence_scores(state)
+            return output
+
+        if node_name == "hypothesis_driven_investigation":
+            output[spec["state_key"]] = rank_hypotheses(state)
             return output
 
         if node_name == "self_correction_loop":

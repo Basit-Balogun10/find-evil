@@ -14,6 +14,7 @@ from find_evil.evidence import (
     classify_evidence_path,
 )
 from find_evil.graph import NODE_SEQUENCE, build_graph, route_after_self_correction
+from find_evil.reasoning import calibrate_confidence_scores, build_evidence_relationship_graph, rank_hypotheses
 from find_evil import nodes
 
 
@@ -66,6 +67,53 @@ class FindEvilGraphTests(TestCase):
         self.assertEqual(summary["other_artifact_count"], 1)
         self.assertGreaterEqual(len(summary["recommendations"]), 1)
 
+    def test_relationship_graph_connects_findings_to_artifacts(self) -> None:
+        state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
+        state["raw_triage_findings"] = [
+            {
+                "node": "basic_disk_triage",
+                "layer": 0,
+                "summary": "Prepared triage manifest",
+                "status": "triage_manifest_ready",
+                "confidence": 0.2,
+                "trace_id": "basic_disk_triage:1",
+                "source_artifacts": ["/cases/sample.dd"],
+            }
+        ]
+
+        graph = build_evidence_relationship_graph(state)
+
+        self.assertEqual(graph["edge_count"], 1)
+        self.assertGreaterEqual(graph["node_count"], 2)
+        self.assertEqual(graph["edges"][0]["source"], "/cases/sample.dd")
+
+    def test_confidence_calibration_scores_findings_from_supporting_artifacts(self) -> None:
+        state = build_initial_state(evidence_file_paths=["/cases/sample.dd"])
+        state["raw_triage_findings"] = [
+            {
+                "node": "basic_disk_triage",
+                "layer": 0,
+                "summary": "Prepared triage manifest",
+                "status": "triage_manifest_ready",
+                "confidence": 0.2,
+                "trace_id": "basic_disk_triage:1",
+                "source_artifacts": ["/cases/sample.dd"],
+            }
+        ]
+
+        scores = calibrate_confidence_scores(state)
+
+        self.assertEqual(len(scores), 1)
+        self.assertGreater(scores[0]["confidence"], 0.0)
+        self.assertEqual(scores[0]["evidence_count"], 1)
+
+    def test_hypothesis_ranking_adapts_to_available_evidence(self) -> None:
+        hypotheses = rank_hypotheses(build_initial_state(evidence_file_paths=["/cases/sample.dd", "/cases/memory.mem"]))
+
+        self.assertGreaterEqual(len(hypotheses), 2)
+        self.assertEqual(hypotheses[0]["priority"], 1)
+        self.assertIn("Correlate disk and memory evidence", hypotheses[0]["name"])
+
     def test_unavailable_adapter_inspects_manifest_without_writing(self) -> None:
         adapter = UnavailableSiftAdapter()
 
@@ -94,6 +142,9 @@ class FindEvilGraphTests(TestCase):
             self.assertEqual(len(final_state["audit_log"]), len(NODE_SEQUENCE))
             self.assertEqual(final_state["evidence_integrity_report"]["read_only_enforced"], True)
             self.assertEqual(final_state["raw_triage_findings"][0]["status"], "triage_manifest_ready")
+            self.assertGreaterEqual(final_state["evidence_relationship_graph"]["edge_count"], 1)
+            self.assertGreaterEqual(len(final_state["confidence_scores"]), 1)
+            self.assertGreaterEqual(len(final_state["hypotheses"]), 1)
             self.assertTrue(audit_log_path.exists())
             self.assertEqual(len(audit_log_path.read_text(encoding="utf-8").splitlines()), len(NODE_SEQUENCE))
 
