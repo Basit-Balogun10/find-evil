@@ -13,6 +13,10 @@ This repository is intentionally small right now: the SIFT Workstation is not in
 - `find_evil/app.py` builds the initial state and runs the graph.
 - `main.py` is the CLI entrypoint.
 
+## Why `find_evil`
+
+The repository stays named `find-evil` because that is the project name on disk and on GitHub. The Python package is `find_evil` because hyphens are not valid in Python import names, so the importable module uses underscores while the repo keeps the human-readable hyphenated name.
+
 ## Run
 
 ```bash
