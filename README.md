@@ -9,6 +9,7 @@ This repository is intentionally small right now: the SIFT Workstation is not in
 - `find_evil/state.py` defines the shared `AgentState`.
 - `find_evil/audit.py` writes structured audit entries to `logs/audit.jsonl`.
 - `find_evil/nodes.py` contains stub implementations for all 22 analysis stages.
+- `find_evil/adapters.py` defines the read-only adapter boundary for future SIFT integration.
 - `find_evil/graph.py` wires the nodes together in LangGraph.
 - `find_evil/app.py` builds the initial state and runs the graph.
 - `main.py` is the CLI entrypoint.

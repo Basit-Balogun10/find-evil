@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
+from find_evil.adapters import SiftUnavailableError, UnavailableSiftAdapter
 from find_evil.app import build_initial_state, run_case
 from find_evil.audit import AuditLogger
 from find_evil.evidence import (
@@ -64,6 +65,21 @@ class FindEvilGraphTests(TestCase):
         self.assertEqual(summary["memory_capture_count"], 1)
         self.assertEqual(summary["other_artifact_count"], 1)
         self.assertGreaterEqual(len(summary["recommendations"]), 1)
+
+    def test_unavailable_adapter_inspects_manifest_without_writing(self) -> None:
+        adapter = UnavailableSiftAdapter()
+
+        manifest = adapter.inspect_manifest(["/cases/sample.dd"])
+
+        self.assertTrue(manifest["read_only_enforced"])
+        self.assertFalse(manifest["write_operations_supported"])
+        self.assertEqual(manifest["adapter"], "UnavailableSiftAdapter")
+
+    def test_unavailable_adapter_rejects_live_sift_operations(self) -> None:
+        adapter = UnavailableSiftAdapter()
+
+        with self.assertRaises(SiftUnavailableError):
+            adapter.triage_disk_image("/cases/sample.dd")
 
     def test_run_case_executes_single_pass_with_audit_entries(self) -> None:
         with TemporaryDirectory() as temporary_directory:
